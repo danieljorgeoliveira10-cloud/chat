@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Chat</title>
+<style>
+body { margin:0; font-family:'Times New Roman'; font-weight:bold; background:#0b5ed7; color:white; }
+#loginContainer { height:100vh; display:flex; justify-content:center; align-items:center; }
+#loginBox { background:#042c54; padding:30px; border-radius:10px; width:300px; text-align:center; }
+#loginBox h2 { margin-bottom:20px; }
+#loginBox input { width:100%; padding:10px; margin:5px 0; border-radius:5px; border:none; }
+#loginBox button { padding:10px 20px; margin-top:10px; border:none; border-radius:5px; background:#0b3b75; color:white; cursor:pointer; }
+#loginBox a { color:#0bf; display:block; margin-top:10px; cursor:pointer; text-decoration:underline; }
+
+#chat { display:none; height:100vh; display:flex; flex-direction:row; }
+#users { width:250px; background:#042c54; color:white; padding:10px; overflow-y:auto; }
+#users h3 { margin-top:0; }
+.user { display:flex; justify-content:space-between; align-items:center; padding:5px; margin-bottom:5px; background:#0b3b75; border-radius:3px; cursor:pointer; }
+
+#messagesArea { flex:1; display:flex; flex-direction:column; }
+#topbar { background:#0b5ed7; color:white; padding:10px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; }
+#messages { flex:1; padding:10px; overflow-y:auto; background:#e5ddd5; color:black; display:flex; flex-direction:column; }
+.msg.me { text-align:left; margin:5px; background:#dcf8c6; padding:5px 10px; border-radius:5px; display:block; max-width:70%; align-self:flex-start; }
+.msg.other { text-align:right; margin:5px; background:#fff; padding:5px 10px; border-radius:5px; display:block; max-width:70%; align-self:flex-end; }
+
+#sendBox { display:flex; padding:10px; }
+#sendBox input { flex:1; padding:10px; border-radius:5px; border:none; margin-right:5px; }
+#sendBox button { padding:10px 15px; border-radius:5px; border:none; background:#042c54; color:white; cursor:pointer; }
+#typing { font-size:14px; color:black; margin-left:5px; font-weight:normal; }
+</style>
+</head>
+<body>
+
+<div id="loginContainer">
+  <div id="loginBox">
+    <h2 id="loginTitle">Login</h2>
+    <input id="username" placeholder="Nome">
+    <input id="password" type="password" placeholder="Senha">
+    <button id="enterBtn">Entrar</button>
+    <a id="toggleForm">Criar Conta</a>
+  </div>
+</div>
+
+<div id="chat">
+  <div id="users">
+    <h3>Usuários</h3>
+    <div id="userList"></div>
+  </div>
+
+  <div id="messagesArea">
+    <div id="topbar">
+      <span id="datetime"></span>
+      <button id="themeBtn">Mudar Tema</button>
+    </div>
+    <div id="messages"></div>
+    <div id="typing"></div>
+    <div id="sendBox">
+      <input id="msg" placeholder="Digite a mensagem">
+      <button id="sendBtn">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+const socket = io();
+const loginContainer = document.getElementById("loginContainer");
+const loginTitle = document.getElementById("loginTitle");
+const toggleFormLink = document.getElementById("toggleForm");
+const chat = document.getElementById("chat");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
+const enterBtn = document.getElementById("enterBtn");
+const messages = document.getElementById("messages");
+const msgInput = document.getElementById("msg");
+const sendBtn = document.getElementById("sendBtn");
+const userList = document.getElementById("userList");
+const typingDiv = document.getElementById("typing");
+const datetime = document.getElementById("datetime");
+const themeBtn = document.getElementById("themeBtn");
+
+let username="";
+let theme="dark";
+let isLogin=true;
+
+// para atualizar data e hora
+setInterval(()=>{
+  const d=new Date();
+  const days=["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+  datetime.innerText=`${days[d.getDay()]}, ${d.getHours()}h ${d.getMinutes()}m ${d.getSeconds()}s`;
+},1000);
+
+// Alternar login e cadastro ao mesmo tempo
+toggleFormLink.onclick=()=>{
+  if(isLogin){
+    loginTitle.innerText="Criar Conta";
+    enterBtn.innerText="Cadastrar";
+    toggleFormLink.innerText="Voltar para Login";
+    isLogin=false;
+  }else{
+    loginTitle.innerText="Login";
+    enterBtn.innerText="Entrar";
+    toggleFormLink.innerText="Criar Conta";
+    isLogin=true;
+  }
+};
+
+
+enterBtn.onclick=()=>{
+  const name=usernameInput.value.trim();
+  const pass=passwordInput.value.trim();
+  if(!name||!pass){ alert("Preencha todos os campos"); return; }
+  username=name;
+  if(isLogin){
+    socket.emit("login",{username:name,password:pass});
+  }else{
+    socket.emit("register",{username:name,password:pass});
+  }
+};
+
+
+socket.on("login_ok",()=>{
+  localStorage.setItem("username", username); // 👈 AQUI
+  loginContainer.style.display="none";
+  chat.style.display="flex";
+  localStorage.setItem("username", username);
+});
+
+
+socket.on("login_error",msg=>alert(msg));
+socket.on("register_error",msg=>alert(msg));
+socket.on("register_ok",msg=>{
+  alert("Cadastro realizado! Faça login.");
+  toggleFormLink.click();
+});
+
+
+sendBtn.onclick=()=>{
+  if(!msgInput.value) return;
+  socket.emit("message",{user:username,text:msgInput.value});
+  msgInput.value="";
+};
+
+
+msgInput.addEventListener("input",()=>{
+  socket.emit("typing",username);
+});
+
+
+socket.on("message",m=>addMessage(m.user,m.text,m.user===username));
+socket.on("loadMessages",msgs=>{
+  messages.innerHTML="";
+  msgs.forEach(m=>addMessage(m.user,m.text,m.user===username));
+});
+
+function addMessage(user,text,isMe){
+  const div=document.createElement("div");
+  div.className="msg "+(isMe?"me":"other");
+  div.innerText=user+": "+text;
+  messages.appendChild(div);
+  messages.scrollTop=messages.scrollHeight;
+}
+
+
+socket.on("updateUsers",users=>{
+  userList.innerHTML="";
+  users.forEach(u=>{
+    const div=document.createElement("div");
+    div.className="user";
+    let color=u.online?'green':'gray';
+    let last=u.online?'':`(${new Date(u.last_online).toLocaleTimeString()})`;
+    div.innerHTML=`<span>${u.username} ${last}</span><span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block"></span>`;
+    div.onclick=()=>window.open(`/private/${u.username}`,"_blank");
+    userList.appendChild(div);
+  });
+});
+
+
+socket.on("typing", typingUser=>{
+  typingDiv.innerText=typingUser+" está escrever...";
+  setTimeout(()=>{typingDiv.innerText="";},3000);
+});
+
+// ALTERAR TEMA 
+themeBtn.onclick = () => {
+  const messagesDiv = document.getElementById("messages");
+  if(theme==="dark"){
+    theme="green";
+    messagesDiv.style.background="#d9f3e6";
+  } else {
+    theme="dark";
+    messagesDiv.style.background="#e5ddd5";
+  }
+};
+});
+</script>
+</body>
+</html>
