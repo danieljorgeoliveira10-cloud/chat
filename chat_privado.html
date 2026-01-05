@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Chat Privado</title>
+
+<style>
+body {
+  margin:0;
+  font-family:'Times New Roman';
+  font-weight:bold;
+  background:#0b5ed7;
+}
+
+#topbar {
+  background:#042c54;
+  color:white;
+  padding:10px;
+}
+
+#messages {
+  height:calc(100vh - 120px);
+  background:#e5ddd5;
+  padding:10px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+}
+
+.msg.me {
+  align-self:flex-end;
+  background:#dcf8c6;
+  padding:8px;
+  margin:5px 0;
+  border-radius:6px;
+  max-width:70%;
+}
+
+.msg.other {
+  align-self:flex-start;
+  background:white;
+  padding:8px;
+  margin:5px 0;
+  border-radius:6px;
+  max-width:70%;
+}
+
+#typing {
+  font-size:14px;
+  margin-left:10px;
+  color:black;
+}
+
+#sendBox {
+  display:flex;
+  padding:10px;
+  background:#ddd;
+}
+
+#sendBox input {
+  flex:1;
+  padding:10px;
+}
+
+#sendBox button {
+  padding:10px;
+  background:#042c54;
+  color:white;
+  border:none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="topbar">
+  <span id="chatWith"></span>
+</div>
+
+<div id="messages"></div>
+<div id="typing"></div>
+
+<div id="sendBox">
+  <input id="msg" placeholder="Digite a mensagem">
+  <button id="sendBtn">Enviar</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const username = localStorage.getItem("username");
+const chatWith = window.location.pathname.split("/").pop();
+document.getElementById("chatWith").innerText = "Chat com " + chatWith;
+
+const messagesDiv = document.getElementById("messages");
+const typingDiv = document.getElementById("typing");
+const msgInput = document.getElementById("msg");
+const sendBtn = document.getElementById("sendBtn");
+
+
+socket.emit("loadPrivate", { from: username, to: chatWith });
+socket.on("loadPrivateMessages", msgs => {
+  msgs.forEach(m => addMessage(m.sender, m.text));
+});
+
+
+sendBtn.onclick = () => {
+  if (!msgInput.value) return;
+  socket.emit("privateMessage", {
+    from: username,
+    to: chatWith,
+    text: msgInput.value
+  });
+  msgInput.value = "";
+};
+
+
+socket.on("privateMessage", data => {
+  if ((data.from === username && data.to === chatWith) ||
+      (data.from === chatWith && data.to === username)) {
+    addMessage(data.from, data.text);
+  }
+});
+
+
+msgInput.addEventListener("input", () => {
+  socket.emit("typingPrivate", { from: username, to: chatWith });
+});
+
+socket.on("typingPrivate", user => {
+  typingDiv.innerText = user + " está a escrever...";
+  setTimeout(() => typingDiv.innerText = "", 2000);
+});
+
+function addMessage(user, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + (user === username ? "me" : "other");
+  div.innerText = text;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+</script>
+
+</body>
+</html>
